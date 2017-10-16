@@ -6,7 +6,7 @@ Basic idea: compute the STFT of some audio, extract features, generate new STFT 
 
 ## Logistic Regression
 
-[https://github.com/knstmrd/musicgen/blob/master/music-generation-v2.ipynb](Audio generation using logistic regression) - there a lot of bugs, but since this method does not produce very good results in general, I've abandoned its development
+[Audio generation using logistic regression](https://github.com/knstmrd/musicgen/blob/master/music-generation-v2.ipynb) - there a lot of bugs, but since this method does not produce very good results in general, I've abandoned its development
 
 The good:
 
@@ -18,7 +18,7 @@ The bad:
 
 ## Decision Trees, Boosted Trees and Random Forests
 
-[https://github.com/knstmrd/musicgen/blob/master/music-generation-trees.ipynb](Audio generation using decision trees, but any regressor can be used)
+[Audio generation using decision trees, but any regressor can be used](https://github.com/knstmrd/musicgen/blob/master/music-generation-trees.ipynb)
 
 Trees take a lot of time to train, and training multi-output trees gives a steady droning output which is less interesting than the results given by separate trees (but those take a large amount of time to train)
 
@@ -42,4 +42,4 @@ The bad:
 
 * Speed up feature extraction
 
-* Try some sort of Phase Vocoder approach to get rid of phase issues (akin to [http://www.johnglover.net/blog/generating-sound-with-rnns.html](this approach))
+* Try some sort of Phase Vocoder approach to get rid of phase issues (akin to [this approach](http://www.johnglover.net/blog/generating-sound-with-rnns.html))

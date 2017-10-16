@@ -2,11 +2,11 @@
 
 Raw audio generation experiments.
 
-Basic idea: compute the STFT of some audio, extract features, generate new STFT step-by-step (extracting new features during each step). Currently replacing phase data with random noise and only predicting amplitudes, which leads to everything sounding pretty bad. The feature extraction has not been optimized (at all), so it takes up a lot of the 
+Basic idea: compute the STFT of some audio, extract features, generate new STFT step-by-step (extracting new features during each step). Currently replacing phase data with random noise and only predicting amplitudes, which leads to everything sounding pretty bad. The feature extraction has not been optimized (at all), so it takes up a lot of the computation time.
 
 ## Logistic Regression
 
-[Audio generation using logistic regression](https://github.com/knstmrd/musicgen/blob/master/music-generation-v2.ipynb) - there a lot of bugs, but since this method does not produce very good results in general, I've abandoned its development
+[Audio generation using logistic regression](https://github.com/knstmrd/musicgen/blob/master/music-generation-v2.ipynb) - there's a lot of bugs, but since this method does not produce very good results in general, I've abandoned its development
 
 The good:
 
@@ -20,7 +20,7 @@ The bad:
 
 [Audio generation using decision trees, but any regressor can be used](https://github.com/knstmrd/musicgen/blob/master/music-generation-trees.ipynb)
 
-Trees take a lot of time to train, and training multi-output trees gives a steady droning output which is less interesting than the results given by separate trees (but those take a large amount of time to train)
+Trees take a lot of time to train, and training multi-output trees gives a steady droning output which is less interesting than the results given by separate trees (but those take a large amount of time to train). This version can pre-load features from a file or write extracted features to a file.
 
 The good:
 

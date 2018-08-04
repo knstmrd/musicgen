@@ -3,8 +3,8 @@ import librosa as lr
 from math import sqrt
 
 
-def load_audio(path):
-    return lr.load(path, mono=True)
+def load_audio(path, sr):
+    return lr.load(path, mono=True, sr=sr)
 
 
 def stft(audio, config):
@@ -16,12 +16,17 @@ def log_abs(spectrogram):
 
 
 def load_spectrogram_log(path, config):
-    y, sr = load_audio(path)
+    y, sr = load_audio(path, config['sr'])
     return log_abs(stft(y, config))
 
 
+def load_spectrogram_db(path, config):
+    y, sr = load_audio(path, config['sr'])
+    return lr.core.power_to_db(stft(y, config))
+
+
 def load_mel_spectrogram_db(path, config):
-    y, sr = load_audio(path)
+    y, sr = load_audio(path, config['sr'])
     return lr.core.power_to_db(lr.feature.melspectrogram(y=y, sr=sr, n_fft=config['framelength'],
                                                          hop_length=config['hop_length']))
 
@@ -90,7 +95,7 @@ def istft_for_reconstruction(X, fft_size, hopsamp):
     time_slices = X.shape[0]
     len_samples = int(time_slices*hopsamp + fft_size)
     x = np.zeros(len_samples)
-    for n,i in enumerate(range(0, len(x)-fft_size, hopsamp)):
+    for n, i in enumerate(range(0, len(x)-fft_size, hopsamp)):
         x[i:i+fft_size] += window*np.real(np.fft.irfft(X[n]))
     return x
 
@@ -113,17 +118,20 @@ def reconstruct_signal_griffin_lim(magnitude_spectrogram, fft_size, hopsamp, ite
     """
     time_slices = magnitude_spectrogram.shape[0]
     len_samples = int(time_slices*hopsamp + fft_size)
-    # Initialize the reconstructed signal to noise.
     x_reconstruct = np.random.randn(len_samples)
-    n = iterations # number of iterations of Griffin-Lim algorithm.
+    n = iterations  # number of iterations of Griffin-Lim algorithm.
     while n > 0:
         n -= 1
         reconstruction_spectrogram = stft_for_reconstruction(x_reconstruct, fft_size, hopsamp)
-        reconstruction_angle = np.angle(reconstruction_spectrogram)
-        # Discard magnitude part of the reconstruction and use the supplied magnitude spectrogram instead.
-        proposal_spectrogram = magnitude_spectrogram*np.exp(1.0j*reconstruction_angle)
+        if n == iterations - 1:
+            prev_x_spec = reconstruction_spectrogram
+
+        reconstruction_angle = np.angle(reconstruction_spectrogram + 0.99 * (reconstruction_spectrogram - prev_x_spec))
+        proposal_spectrogram = magnitude_spectrogram * np.exp(1.0j * reconstruction_angle)
         prev_x = x_reconstruct
         x_reconstruct = istft_for_reconstruction(proposal_spectrogram, fft_size, hopsamp)
-        diff = sqrt(sum((x_reconstruct - prev_x)**2)/x_reconstruct.size)
+        prev_x_spec = reconstruction_spectrogram
+
+        diff = sqrt(sum((x_reconstruct - prev_x)**2) / x_reconstruct.size)
         print('Reconstruction iteration: {}/{} RMSE: {} '.format(iterations - n, iterations, diff))
     return x_reconstruct

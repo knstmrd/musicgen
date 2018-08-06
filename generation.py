@@ -12,7 +12,8 @@ def generate_frame_single(features, predictor):
 
 
 def generate(spectrogram, predictor, config, n_features):
-    y = np.zeros((config['n_test'] + config['seed_length'],n_features))
+    y = np.zeros((config['n_test'] + config['seed_length'], spectrogram.shape[1]))
+    print(y.shape, spectrogram.shape)
     y[:config['seed_length'], :] = spectrogram[config['test_offset']:config['test_offset'] + config['seed_length'], :]
     for i in range(config['n_test']):
         if i % config['gen_verbose'] == 0:

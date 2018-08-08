@@ -22,13 +22,13 @@ def load_spectrogram_log(path, config):
 
 def load_spectrogram_db(path, config):
     y, sr = load_audio(path, config['sr'])
-    return lr.core.power_to_db(stft(y, config))
+    return lr.core.amplitude_to_db(stft(y, config))
 
 
 def load_mel_spectrogram_db(path, config):
     y, sr = load_audio(path, config['sr'])
-    return lr.core.power_to_db(lr.feature.melspectrogram(y=y, sr=sr, n_fft=config['framelength'],
-                                                         hop_length=config['hop_length']))
+    return lr.core.amplitude_to_db(lr.feature.melspectrogram(y=y, sr=sr, n_fft=config['framelength'],
+                                                             hop_length=config['hop_length']))
 
 
 def fft_bin_to_hz(n_bin, sample_rate_hz, fft_size):

@@ -11,57 +11,45 @@ def stft(audio, config):
     return lr.core.stft(audio, n_fft=config['framelength'], hop_length=config['hop_length'])
 
 
-def log_abs(spectrogram):
-    return np.log(1 + np.absolute(spectrogram))
-
-
-def load_spectrogram_log(path, config):
-    y, sr = load_audio(path, config['sr'])
-    return log_abs(stft(y, config))
-
-
 def load_spectrogram_db(path, config):
     y, sr = load_audio(path, config['sr'])
     return lr.core.amplitude_to_db(stft(y, config))
 
 
+def load_mel_spectrogram(path, config):
+    y, sr = load_audio(path, config['sr'])
+    spec = stft(y, config)
+
+    mel_filters = lr.filters.mel(sr, n_fft=config['framelength'],
+                                 n_mels=config['n_mel'], fmin=0.0, fmax=None, htk=False, norm=1)
+    spec = np.absolute(spec)
+    # spec = lr.core.amplitude_to_db(spec)
+    spec = mel_filters.dot(spec ** 2)
+    return spec, mel_filters
+    # return lr.core.amplitude_to_db(lr.feature.melspectrogram(y=y, sr=sr, n_fft=config['framelength'],
+    #                                                          hop_length=config['hop_length']))
+
+
+def invert_mel(spec, mel_filters):
+    return mel_filters.T.dot(spec) ** 0.5
+
+
 def load_mel_spectrogram_db(path, config):
     y, sr = load_audio(path, config['sr'])
-    return lr.core.amplitude_to_db(lr.feature.melspectrogram(y=y, sr=sr, n_fft=config['framelength'],
-                                                             hop_length=config['hop_length']))
+    spec = stft(y, config)
+
+    mel_filters = lr.filters.mel(sr, n_fft=config['framelength'],
+                                 n_mels=config['n_mel'], fmin=0.0, fmax=None, htk=False, norm=1)
+    spec = np.absolute(spec)
+    # spec = lr.core.amplitude_to_db(spec)
+    spec = mel_filters.dot(spec ** 2)
+    return lr.power_to_db(spec), mel_filters
+    # return lr.core.amplitude_to_db(lr.feature.melspectrogram(y=y, sr=sr, n_fft=config['framelength'],
+    #                                                          hop_length=config['hop_length']))
 
 
-def fft_bin_to_hz(n_bin, sample_rate_hz, fft_size):
-    """Convert FFT bin index to frequency in Hz.
-    Args:
-        n_bin (int or float): The FFT bin index.
-        sample_rate_hz (int or float): The sample rate in Hz.
-        fft_size (int or float): The FFT size.
-    Returns:
-        The value in Hz.
-    """
-    n_bin = float(n_bin)
-    sample_rate_hz = float(sample_rate_hz)
-    fft_size = float(fft_size)
-    return n_bin*sample_rate_hz/(2.0*fft_size)
-
-
-def hz_to_fft_bin(f_hz, sample_rate_hz, fft_size):
-    """Convert frequency in Hz to FFT bin index.
-    Args:
-        f_hz (int or float): The frequency in Hz.
-        sample_rate_hz (int or float): The sample rate in Hz.
-        fft_size (int or float): The FFT size.
-    Returns:
-        The FFT bin index as an int.
-    """
-    f_hz = float(f_hz)
-    sample_rate_hz = float(sample_rate_hz)
-    fft_size = float(fft_size)
-    fft_bin = int(np.round((f_hz*2.0*fft_size/sample_rate_hz)))
-    if fft_bin >= fft_size:
-        fft_bin = fft_size-1
-    return fft_bin
+def invert_mel_db(spec, mel_filters):
+    return mel_filters.T.dot(lr.db_to_power(spec)) ** 0.5
 
 
 def stft_for_reconstruction(x, fft_size, hopsamp):
@@ -127,6 +115,7 @@ def reconstruct_signal_griffin_lim(magnitude_spectrogram, fft_size, hopsamp, ite
             prev_x_spec = reconstruction_spectrogram
 
         reconstruction_angle = np.angle(reconstruction_spectrogram + 0.99 * (reconstruction_spectrogram - prev_x_spec))
+        # reconstruction_angle = np.angle(reconstruction_spectrogram)
         proposal_spectrogram = magnitude_spectrogram * np.exp(1.0j * reconstruction_angle)
         prev_x = x_reconstruct
         x_reconstruct = istft_for_reconstruction(proposal_spectrogram, fft_size, hopsamp)

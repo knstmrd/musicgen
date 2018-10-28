@@ -22,12 +22,10 @@ def load_mel_spectrogram(path, config):
 
     mel_filters = lr.filters.mel(sr, n_fft=config['framelength'],
                                  n_mels=config['n_mel'], fmin=0.0, fmax=None, htk=False, norm=1)
-    spec = np.absolute(spec)
-    # spec = lr.core.amplitude_to_db(spec)
+    spec = np.abs(spec)
+    print('Max amplitude: {}'.format(np.max(spec)))
     spec = mel_filters.dot(spec ** 2)
     return spec, mel_filters
-    # return lr.core.amplitude_to_db(lr.feature.melspectrogram(y=y, sr=sr, n_fft=config['framelength'],
-    #                                                          hop_length=config['hop_length']))
 
 
 def invert_mel(spec, mel_filters):
@@ -35,21 +33,17 @@ def invert_mel(spec, mel_filters):
 
 
 def load_mel_spectrogram_db(path, config):
-    y, sr = load_audio(path, config['sr'])
-    spec = stft(y, config)
-
-    mel_filters = lr.filters.mel(sr, n_fft=config['framelength'],
-                                 n_mels=config['n_mel'], fmin=0.0, fmax=None, htk=False, norm=1)
-    spec = np.absolute(spec)
-    # spec = lr.core.amplitude_to_db(spec)
-    spec = mel_filters.dot(spec ** 2)
-    return lr.power_to_db(spec), mel_filters
-    # return lr.core.amplitude_to_db(lr.feature.melspectrogram(y=y, sr=sr, n_fft=config['framelength'],
-    #                                                          hop_length=config['hop_length']))
+    spec, mel_filters = load_mel_spectrogram(path, config)
+    config['ref_power'] = np.max(spec)
+    return lr.power_to_db(spec, ref=np.max), mel_filters
 
 
-def invert_mel_db(spec, mel_filters):
-    return mel_filters.T.dot(lr.db_to_power(spec)) ** 0.5
+def invert_mel_db(spec, mel_filters, config=None):
+    if config is None or 'ref_power' not in config.keys():
+        ref = 1.0
+    else:
+        ref = config['ref_power']
+    return mel_filters.T.dot(lr.db_to_power(spec, ref=ref)) ** 0.5
 
 
 def stft_for_reconstruction(x, fft_size, hopsamp):

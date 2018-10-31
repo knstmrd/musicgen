@@ -12,21 +12,22 @@ gen_audio_name = 'reich'  # what audio will be used as a seed for generation
 original_audio_list = {'reich': 'input/01-18_Pulses.wav', 'branca': 'input/04-LightField.wav',
                        'schonberg': 'input/2-05_Phantasy_for_Violin_and_Piano.wav',
                        'bach': 'input/26-Variation_25a2Clav_1955.wav',
-                       'contrapunctus': 'input/08_Contrapunctus_VIIIa_3.wav'}
+                       'contrapunctus': 'input/08_Contrapunctus_VIIIa_3.wav',
+                       'allegro': 'input/1-03_Water_Music_Suite_No_1_inFMajHWV_348_III_AllegroAndanteAllegro.wav'}
 
 config = {
-    'hop_length':  512,
-    'framelength': 2048,
-    'audio': 'bach',
-    'n_train': 10240,
-    'n_test': 3000,
+    'hop_length':  256,
+    'framelength': 1024,
+    'audio': 'allegro',
+    'n_train': 20480,
+    'n_test': 8000,
     'test_offset': 4100,
-    'use_prev_frames': 100,
+    'use_prev_frames': 80,
     'start_offset': 0,
     'sr': 22050,
     'batch_size': 128,
-    'n_hidden': 140,
-    'n_epochs': 5,
+    'n_hidden': 400,
+    'n_epochs': 80,
     'n_mel': 160
 }
 
@@ -91,29 +92,19 @@ def main():
 
     rnn2 = get_model((X_train.shape[1], X_train.shape[2]),
                      batch_input_shape=(1, X_train.shape[1], X_train.shape[2]))
-    # rnn2 = keras.models.Sequential()
-    # # rnn.add(keras.layers.SimpleRNN(units=config['n_hidden'],
-    # #                                input_shape=(X_train.shape[1], X_train.shape[2])))
-    # rnn2.add(keras.layers.LSTM(units=config['n_hidden'],
-    #                            input_shape=(X_train.shape[1], X_train.shape[2]),
-    #                            batch_input_shape=(1, X_train.shape[1], X_train.shape[2]),
-    #                            stateful=True))
-    #
-    # rnn2.add(keras.layers.Dense(config['n_mel']))
-    # rnn2.compile(loss='mse', optimizer='adam')
-    # rnn2.summary()
+
     rnn2.set_weights(rnn.get_weights())
 
     for i in range(config['n_test']):
         rnn_input = output_spectrogram[i:i + config['use_prev_frames'], :].reshape([1, config['use_prev_frames'], -1])
         rnn_output = rnn2.predict(rnn_input)
-        # rnn_output.clip(0., 1.)
+        rnn_output = rnn_output.clip(0., 1.)
         output_spectrogram[config['use_prev_frames'] + i, :] = rnn_output
 
     output_spectrogram = output_spectrogram[config['use_prev_frames']:, :]  # cut-off seed audio
 
-    print('Min/max output spectrogram {}, {}'.format(np.min(spectrogram), np.max(spectrogram)))
-    output_spectrogram.clip(0., 1.)
+    print('Min/max output spectrogram {}, {}'.format(np.min(output_spectrogram), np.max(output_spectrogram)))
+    output_spectrogram = output_spectrogram.clip(0., 1.)
 
     output_spectrogram = mm_scaler.inverse_transform(output_spectrogram)
     print('Output spectrogram power range: {} {}'.format(np.min(output_spectrogram), np.max(output_spectrogram)))
@@ -122,7 +113,7 @@ def main():
     print('Max output amplitude: {}'.format(np.max(output_spectrogram)))
 
     output = reconstruct_signal_griffin_lim(output_spectrogram, config['framelength'],
-                                            config['hop_length'], 120)
+                                            config['hop_length'], 80)
 
     lr.output.write_wav('output/rnn/{}_p{}_h{}_e{}.wav'.format(config['audio'], config['use_prev_frames'],
                                                                config['n_hidden'], config['n_epochs']),

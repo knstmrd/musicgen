@@ -2,9 +2,40 @@
 
 Raw audio generation experiments.
 
+## New code (2018)
+
+Basic idea: compute mel-spectrogram of audio, pre-process, generate new mel-spectrograms step-by-step, apply inverse mel-transform, apply Griffin-Lim algorithm to estimate phase of audio.
+
+General to-do:
+
+- [ ] Apply LeRoux's reconstruction algorithm
+
+### Linear regression, various tree algorithms, vanilla neural networks
+
+Idea: extract features, feed to regression algorithm, generate new audio frame.
+
+### Neural network based approaches
+
+Idea: feed raw audio frame(s) to neural network.
+
+Approaches:
+
+- [x] RNN-based generation (currently via one-layer LSTMs)
+- [ ] CNN-based generation
+- [ ] GAN-based generation (combined with CNNs?)
+- [ ] Other approaches (convolutional RNNs?)
+
+### TO-DO list
+
+- [ ] Pre-compute and store mel-spectrograms, since otherwise it takes time to load audio and perform STFT
+
+## Old notebooks (2017)
+
+Approaches tried in 2017, may contain bugs, etc.
+
 Basic idea: compute the STFT of some audio, extract features, generate new STFT step-by-step (extracting new features during each step). Currently replacing phase data with random noise and only predicting amplitudes, which leads to everything sounding pretty bad. The feature extraction has not been optimized (at all), so it takes up a lot of the computation time.
 
-## Logistic Regression
+### Logistic Regression
 
 [Audio generation using logistic regression](https://github.com/knstmrd/musicgen/blob/master/music-generation-v2.ipynb) - there's a lot of bugs, but since this method does not produce very good results in general, I've abandoned its development
 
@@ -16,7 +47,7 @@ The bad:
 
 * can "blow up" (amplitude goes to infinity), attempts to set a maximum volume lead to unpleasant clicks and frequent "resetting" of the values.
 
-## Decision Trees, Boosted Trees and Random Forests
+### Decision Trees, Boosted Trees and Random Forests
 
 [Audio generation using decision trees, but any regressor can be used](https://github.com/knstmrd/musicgen/blob/master/music-generation-trees.ipynb)
 
@@ -31,15 +62,3 @@ The bad:
 * Excruciatingly slow
 
 * Still end up giving drones
-
-# Future plans
-
-* Test adding random to features noise during generation to produce more varied audio
-
-* Test various neural networks
-
-* Test audio-specific features
-
-* Speed up feature extraction
-
-* Try some sort of Phase Vocoder approach to get rid of phase issues (akin to [this approach](http://www.johnglover.net/blog/generating-sound-with-rnns.html))

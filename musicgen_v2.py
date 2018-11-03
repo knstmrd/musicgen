@@ -22,37 +22,41 @@ original_audio_list = {'reich': 'input/01-18_Pulses.wav', 'branca': 'input/04-Li
 config = {
     'hop_length':  512,
     'framelength': 2048,
-    'audio': 'schonberg',
+    'audio': 'bach',
+    'db_max': -0.5,
     'n_train': 4000,
     'step': 2,
     'n_test': 4000,
     'test_offset': 4500,
+    'use_prev_frames': 2,
     'gen_verbose': 500,
-    'start_offset': 1,
+    'start_offset': 0,
     'sr': 22050,
-    'seed_length': 1
+    'seed_length': 5,
+    'n_mel': 120
 }
 
 # mls = load_mel_spectrogram_db(original_audio_list[config['audio']], config)
-spectrogram = load_spectrogram_db(original_audio_list[config['audio']], config)
+spectrogram, melfilters = load_mel_spectrogram_db(original_audio_list[config['audio']], config)
 print('Finished loading audio and creating spectrogram, shape: %d %d\n'%spectrogram.shape)
 #
+
+config['start_offset'] += config['use_prev_frames']
 spectrogram = spectrogram.T  # rows should be different training examples, so different points in time
 
 X = fe.extract_features(spectrogram, config)
 y = fe.extract_target(spectrogram, config)
 
-print(X.shape, y.shape)
+print('Training data shape: {}, training labels shape: {}'.format(X.shape, y.shape))
 start_time = perf_counter()
-# predictor = LGBMRegressor(n_estimators=1)
 predictor = LinearRegression(normalize=True)
 predictor.fit(X, y)
 print(perf_counter() - start_time)
 #
 output_spectrogram = generate(spectrogram, predictor, config, X.shape[1])
-output_spectrogram = lr.db_to_power(output_spectrogram.T).T
+output_spectrogram = invert_mel_db(output_spectrogram.T, melfilters).T
 
 output = reconstruct_signal_griffin_lim(output_spectrogram, config['framelength'],
-                                        config['hop_length'], 100)
+                                        config['hop_length'], 80)
 
 lr.output.write_wav('test.wav', output, config['sr'])

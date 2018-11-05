@@ -1,6 +1,52 @@
 import numpy as np
 import librosa as lr
 from math import sqrt
+import pathlib
+import json
+from matplotlib import pyplot as plt
+
+
+def create_dirs_write_config(fname, config, predictor_type):
+    pathlib.Path('data/output/{}/{}/{}'.format(predictor_type,
+                                               config['audio'], fname)).mkdir(parents=True, exist_ok=True)
+    with open('data/output/{}/{}/{}/config.json'.format(predictor_type, config['audio'], fname), 'w') as f:
+        json.dump(config, f)
+
+
+def write_keras_model(fname, config, predictor_type, model):
+    with open('data/output/{}/{}/{}/keras_config.json'.format(predictor_type, config['audio'], fname), 'w') as f:
+        json.dump(model.get_config(), f)
+
+
+def plot_history(fname, config, predictor_type, history):
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.plot(history.history['loss'], 'r-', label='train')
+    ax.plot(history.history['val_loss'], 'b-', label='validation')
+    ax.legend()
+    fig.savefig('data/output/{}/{}/{}/{}.png'.format(predictor_type,
+                                                     config['audio'], fname, config['n_hidden']), bbox_inches='tight')
+
+
+def convert_output_to_audio(output_spectrogram, config, scaler, melfilters, fname, predictor_type):
+    output_spectrogram = output_spectrogram[config['use_prev_frames']:, :]  # cut-off seed audio
+
+    print('Min/max output spectrogram {}, {}'.format(np.min(output_spectrogram), np.max(output_spectrogram)))
+    output_spectrogram = output_spectrogram.clip(0., 1.)
+
+    output_spectrogram = scaler.inverse_transform(output_spectrogram)
+    print('Output spectrogram power range: {} {}'.format(np.min(output_spectrogram), np.max(output_spectrogram)))
+
+    output_spectrogram = invert_mel_db(output_spectrogram.T, melfilters, config).T
+    print('Max output amplitude: {}'.format(np.max(output_spectrogram)))
+
+    output = reconstruct_signal_griffin_lim(output_spectrogram, config['framelength'],
+                                            config['hop_length'], 80)
+
+    lr.output.write_wav('data/output/{}/{}/{}/p{}_h{}_e{}.wav'.format(predictor_type, config['audio'], fname,
+                                                                      config['use_prev_frames'],
+                                                                      config['n_hidden'], config['n_epochs']),
+                        output, config['sr'])
 
 
 def load_audio(path, sr):

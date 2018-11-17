@@ -41,7 +41,7 @@ def convert_output_to_audio(output_spectrogram, config, scaler, melfilters, fnam
     print('Max output amplitude: {}'.format(np.max(output_spectrogram)))
 
     output = reconstruct_signal_griffin_lim(output_spectrogram, config['framelength'],
-                                            config['hop_length'], 80)
+                                            config['hop_length'], config['griflim_iter'], config['griflim_stat'])
 
     lr.output.write_wav('data/output/{}/{}/{}/p{}_h{}_e{}.wav'.format(predictor_type, config['audio'], fname,
                                                                       config['use_prev_frames'],
@@ -128,7 +128,7 @@ def istft_for_reconstruction(X, fft_size, hopsamp):
     return x
 
 
-def reconstruct_signal_griffin_lim(magnitude_spectrogram, fft_size, hopsamp, iterations):
+def reconstruct_signal_griffin_lim(magnitude_spectrogram, fft_size, hopsamp, iterations, griflim_stat):
     """Reconstruct an audio signal from a magnitude spectrogram.
     Given a magnitude spectrogram as input, reconstruct
     the audio signal and return it using the Griffin-Lim algorithm from the paper:
@@ -148,10 +148,9 @@ def reconstruct_signal_griffin_lim(magnitude_spectrogram, fft_size, hopsamp, ite
     len_samples = int(time_slices*hopsamp + fft_size)
     x_reconstruct = np.random.randn(len_samples)
     n = iterations  # number of iterations of Griffin-Lim algorithm.
-    while n > 0:
-        n -= 1
+    for n in range(iterations):
         reconstruction_spectrogram = stft_for_reconstruction(x_reconstruct, fft_size, hopsamp)
-        if n == iterations - 1:
+        if n == 0:
             prev_x_spec = reconstruction_spectrogram
 
         reconstruction_angle = np.angle(reconstruction_spectrogram + 0.99 * (reconstruction_spectrogram - prev_x_spec))
@@ -161,6 +160,7 @@ def reconstruct_signal_griffin_lim(magnitude_spectrogram, fft_size, hopsamp, ite
         x_reconstruct = istft_for_reconstruction(proposal_spectrogram, fft_size, hopsamp)
         prev_x_spec = reconstruction_spectrogram
 
-        diff = sqrt(sum((x_reconstruct - prev_x)**2) / x_reconstruct.size)
-        print('Reconstruction iteration: {}/{} RMSE: {} '.format(iterations - n, iterations, diff))
+        if n % griflim_stat == 0:
+            diff = sqrt(sum((x_reconstruct - prev_x)**2) / x_reconstruct.size)
+            print('Reconstruction iteration: {}/{} RMSE: {} '.format(n, iterations, diff))
     return x_reconstruct

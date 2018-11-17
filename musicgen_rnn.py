@@ -16,21 +16,23 @@ original_audio_list = {'reich': 'input/01-18_Pulses.wav', 'branca': 'input/04-Li
 config = {
     'hop_length':  256,
     'framelength': 1024,
-    'audio': 'bach',
+    'audio': 'contrapunctus',
     'n_train': 20480,
     'n_test': 3000,
     'test_offset': 4100,
-    'use_prev_frames': 30,
+    'use_prev_frames': 25,
     'start_offset': 0,
     'sr': 22050,
-    'batch_size': 128,
-    'n_hidden': 20,
-    'n_layers': 2,
-    'n_epochs': 3,
-    'n_mel': 100,
-    'sigmoid_output': True,
+    'batch_size': 64,
+    'n_hidden': 120,
+    'n_layers': 4,
+    'n_epochs': 120,
+    'n_mel': 160,
+    'sigmoid_output': False,
     'tensorboard': False,
-    'LR_on_plateau': True
+    'LR_on_plateau': True,
+    'griflim_iter': 120,
+    'griflim_stat': 20,
 }
 
 
@@ -55,8 +57,9 @@ def get_model(input_shape, batch_input_shape=None):
     if config['sigmoid_output']:
         rnn.add(keras.layers.Activation('sigmoid'))
 
-    adam = keras.optimizers.Adam(lr=0.002, beta_1=0.9, beta_2=0.999)
-    rnn.compile(loss='mse', optimizer=adam)
+    # opt = keras.optimizers.Adam(lr=0.002, beta_1=0.9, beta_2=0.999)
+    opt = keras.optimizers.RMSprop(lr=0.002)
+    rnn.compile(loss='mse', optimizer=opt)
     rnn.summary()
     return rnn
 
@@ -72,8 +75,8 @@ def get_callbacks(fname):
         callbacks.append(tbc)
 
     if config['LR_on_plateau']:
-        rlrp = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=4, verbose=0, mode='auto',
-                                                 min_delta=0.0001, cooldown=1, min_lr=0)
+        rlrp = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=1, mode='auto',
+                                                 min_delta=0.0001, cooldown=1, min_lr=1e-6)
         callbacks.append(rlrp)
     return callbacks
 

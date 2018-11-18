@@ -1,14 +1,12 @@
-from matplotlib import pyplot as plt
 import numpy as np
 from utils import *
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
 import keras
 from matplotlib import pyplot as plt
+from datetime import datetime
 
 
-train_audio_name = 'reich'  # what audio we will train on
-gen_audio_name = 'reich'  # what audio will be used as a seed for generation
 original_audio_list = {'reich': 'input/01-18_Pulses.wav', 'branca': 'input/04-LightField.wav',
                        'schonberg': 'input/2-05_Phantasy_for_Violin_and_Piano.wav',
                        'bach': 'input/26-Variation_25a2Clav_1955.wav',
@@ -18,50 +16,85 @@ original_audio_list = {'reich': 'input/01-18_Pulses.wav', 'branca': 'input/04-Li
 config = {
     'hop_length':  256,
     'framelength': 1024,
-    'audio': 'allegro',
+    'audio': 'contrapunctus',
     'n_train': 20480,
-    'n_test': 8000,
+    'n_test': 3000,
     'test_offset': 4100,
-    'use_prev_frames': 80,
+    'use_prev_frames': 200,
     'start_offset': 0,
     'sr': 22050,
-    'batch_size': 128,
-    'n_hidden': 400,
-    'n_epochs': 80,
+    'batch_size': 64,
+    'n_layers': 4,
+    'n_epochs': 10,
     'n_mel': 160,
-    'n_predict': 2  # number of frames we predict
+    'sigmoid_output': False,
+    'tensorboard': False,
+    'LR_on_plateau': True,
+    'griflim_iter': 120,
+    'griflim_stat': 20,
+    'dropout': 0.5
 }
 
 
 def get_model(input_shape):
     cnn = keras.models.Sequential()
-    cnn.add(keras.layers.InputLayer(input_shape=(input_shape, 1)))
-    cnn.add(keras.layers.Conv2D(128, (3, 3), padding='same',
+    cnn.add(keras.layers.InputLayer(input_shape=(*input_shape, 1)))
+    cnn.add(keras.layers.Conv2D(32, (3, 3), dilation_rate=(2, 1), padding='same',
                                 activation='relu'))
-    cnn.add(keras.layers.Conv2D(128, (3, 3), padding='same',
+    cnn.add(keras.layers.Conv2D(32, (3, 3), dilation_rate=(2, 1), padding='same',
                                 activation='relu'))
-    cnn.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(3, 2)))
+    cnn.add(keras.layers.MaxPooling2D(pool_size=(4, 1), strides=(4, 1)))
 
-    cnn.add(keras.layers.Conv2D(128, (3, 3), padding='same',
+    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
                                 activation='relu'))
-    cnn.add(keras.layers.Conv2D(128, (3, 3), padding='same',
+    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
                                 activation='relu'))
-    cnn.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(3, 2)))
+    cnn.add(keras.layers.MaxPooling2D(pool_size=(4, 1), strides=(4, 1)))
 
-    cnn.add(keras.layers.Conv2D(128, (3, 3), padding='same',
+    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
                                 activation='relu'))
-    cnn.add(keras.layers.Conv2D(128, (3, 3), padding='same',
+    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
                                 activation='relu'))
-    cnn.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(3, 2)))
+    cnn.add(keras.layers.MaxPooling2D(pool_size=(3, 1), strides=(3, 1)))
+
+    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
+                                activation='relu'))
+    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
+                                activation='relu'))
+    cnn.add(keras.layers.MaxPooling2D(pool_size=(3, 1), strides=(3, 1)))
+
+
     cnn.add(keras.layers.Conv2D(1, (1, 1), padding='same',
                                 activation='relu'))
 
-    cnn.compile(loss='mse', optimizer='adam')
+
+    opt = keras.optimizers.Adam(lr=0.002, beta_1=0.9, beta_2=0.999)
+    cnn.compile(loss='mse', optimizer=opt)
     cnn.summary()
     return cnn
 
 
+def get_callbacks(fname):
+    callbacks = []
+
+    if config['tensorboard']:
+        tbc = keras.callbacks.TensorBoard(log_dir='./data/output/rnn/{}/{}/tb_graphs'.format(config['audio'], fname),
+                                          histogram_freq=10,
+                                          write_graph=False, write_grads=True,
+                                          batch_size=config['batch_size'])
+        callbacks.append(tbc)
+
+    if config['LR_on_plateau']:
+        rlrp = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=1, mode='auto',
+                                                 min_delta=0.0001, cooldown=1, min_lr=1e-6)
+        callbacks.append(rlrp)
+    return callbacks
+
+
 def main():
+    fname = str(datetime.now()).replace(':', '_').replace(' ', '_')[5:19]
+    create_dirs_write_config(fname, config, 'cnn')
+
     spectrogram, melfilters = load_mel_spectrogram_db(original_audio_list[config['audio']], config)
     print('Finished loading audio and creating spectrogram, shape: {}\n'.format(spectrogram.shape))
     print('Min/max spectrogram: {}, {}'.format(np.min(spectrogram), np.max(spectrogram)))
@@ -73,26 +106,23 @@ def main():
     spectrogram = mm_scaler.fit_transform(spectrogram)
     print('Min/max spectrogram post-scaling: {}, {}'.format(np.min(spectrogram), np.max(spectrogram)))
 
-    X_train = np.zeros((config['n_train'], config['use_prev_frames'], spectrogram.shape[1]))
+    X_train = np.zeros((config['n_train'], config['use_prev_frames'], spectrogram.shape[1], 1))
 
     for i in range(config['use_prev_frames']):
-        X_train[:, i, :] = spectrogram[i:i + config['n_train'], :]
+        X_train[:, i, :, 0] = spectrogram[i:i + config['n_train'], :]
 
     y_train = spectrogram[config['use_prev_frames']:config['n_train']+config['use_prev_frames'], :]
 
     cnn = get_model((X_train.shape[1], X_train.shape[2]))
 
+    write_keras_model(fname, config, 'cnn', cnn)
+
+    callbacks = get_callbacks(fname)
     history = cnn.fit(X_train, y_train, epochs=config['n_epochs'], batch_size=config['batch_size'],
                       validation_split=0.1,
-                      verbose=1, shuffle=False)
+                      verbose=1, callbacks=callbacks)
 
-    # plot history
-    fig = plt.figure(figsize=(10, 10))
-    ax = fig.add_axes([0, 0, 1, 1])
-    ax.plot(history.history['loss'], 'r-', label='train')
-    ax.plot(history.history['val_loss'], 'b-', label='validation')
-    ax.legend()
-    fig.savefig('output/cnn/{}_{}.png'.format(config['audio'], config['n_hidden']), bbox_inches='tight')
+    plot_history(fname, config, 'rnn', history)
 
     output_spectrogram = np.zeros((config['n_test'] + config['use_prev_frames'], spectrogram.shape[1]))
 
@@ -100,28 +130,12 @@ def main():
                                                                                           + config['use_prev_frames'], :]
 
     for i in range(config['n_test']):
-        cnn_input = output_spectrogram[i:i + config['use_prev_frames'], :]
+        cnn_input = output_spectrogram[i:i + config['use_prev_frames'], :].reshape([1, config['use_prev_frames'], -1])
         cnn_output = cnn.predict(cnn_input)
         cnn_output = cnn_output.clip(0., 1.)
         output_spectrogram[config['use_prev_frames'] + i, :] = cnn_output
 
-    output_spectrogram = output_spectrogram[config['use_prev_frames']:, :]  # cut-off seed audio
-
-    print('Min/max output spectrogram {}, {}'.format(np.min(output_spectrogram), np.max(output_spectrogram)))
-    output_spectrogram = output_spectrogram.clip(0., 1.)
-
-    output_spectrogram = mm_scaler.inverse_transform(output_spectrogram)
-    print('Output spectrogram power range: {} {}'.format(np.min(output_spectrogram), np.max(output_spectrogram)))
-
-    output_spectrogram = invert_mel_db(output_spectrogram.T, melfilters, config).T
-    print('Max output amplitude: {}'.format(np.max(output_spectrogram)))
-
-    output = reconstruct_signal_griffin_lim(output_spectrogram, config['framelength'],
-                                            config['hop_length'], 80)
-
-    lr.output.write_wav('output/cnn/{}_p{}_h{}_e{}.wav'.format(config['audio'], config['use_prev_frames'],
-                                                               config['n_hidden'], config['n_epochs']),
-                        output, config['sr'])
+    convert_output_to_audio(output_spectrogram, config, mm_scaler, melfilters, fname, 'cnn')
 
 
 if __name__ == "__main__":

@@ -8,7 +8,9 @@ Basic idea: compute mel-spectrogram of audio, pre-process, generate new mel-spec
 
 General to-do:
 
+- [ ] Re-write GL reconstruction algorithm
 - [ ] Apply LeRoux's reconstruction algorithm
+- [ ] Save spectrograms after original pre-processing (for faster loading)
 
 ### Linear regression, various tree algorithms, vanilla neural networks
 
@@ -20,14 +22,10 @@ Idea: feed raw audio frame(s) to neural network.
 
 Approaches:
 
-- [x] RNN-based generation (currently via one-layer LSTMs)
+- [x] RNN-based generation (via layered LSTMs)
 - [ ] CNN-based generation
+- [ ] Convolutational RNNs
 - [ ] GAN-based generation (combined with CNNs?)
-- [ ] Other approaches (convolutional RNNs?)
-
-### TO-DO list
-
-- [ ] Pre-compute and store mel-spectrograms, since otherwise it takes time to load audio and perform STFT
 
 ## Old notebooks (2017)
 

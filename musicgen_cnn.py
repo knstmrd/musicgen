@@ -17,22 +17,21 @@ config = {
     'hop_length':  256,
     'framelength': 1024,
     'audio': 'contrapunctus',
-    'n_train': 20480,
+    'n_train': 512,
     'n_test': 3000,
     'test_offset': 4100,
-    'use_prev_frames': 200,
+    'use_prev_frames': 20480,
     'start_offset': 0,
     'sr': 22050,
-    'batch_size': 64,
-    'n_layers': 4,
-    'n_epochs': 10,
+    'batch_size': 128,
+    'n_epochs': 2,
     'n_mel': 160,
     'sigmoid_output': False,
     'tensorboard': False,
     'LR_on_plateau': True,
     'griflim_iter': 120,
     'griflim_stat': 20,
-    'dropout': 0.5
+    'dim': 2
 }
 
 
@@ -45,9 +44,9 @@ def get_model(input_shape):
                                 activation='relu'))
     cnn.add(keras.layers.MaxPooling2D(pool_size=(4, 1), strides=(4, 1)))
 
-    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
+    cnn.add(keras.layers.Conv2D(32, (3, 3), padding='same',
                                 activation='relu'))
-    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
+    cnn.add(keras.layers.Conv2D(32, (3, 3), padding='same',
                                 activation='relu'))
     cnn.add(keras.layers.MaxPooling2D(pool_size=(4, 1), strides=(4, 1)))
 
@@ -63,12 +62,11 @@ def get_model(input_shape):
                                 activation='relu'))
     cnn.add(keras.layers.MaxPooling2D(pool_size=(3, 1), strides=(3, 1)))
 
-
     cnn.add(keras.layers.Conv2D(1, (1, 1), padding='same',
                                 activation='relu'))
+    cnn.add(keras.layers.Flatten())
 
-
-    opt = keras.optimizers.Adam(lr=0.002, beta_1=0.9, beta_2=0.999)
+    opt = keras.optimizers.Adam(lr=0.0015, beta_1=0.9, beta_2=0.999)
     cnn.compile(loss='mse', optimizer=opt)
     cnn.summary()
     return cnn
@@ -122,7 +120,7 @@ def main():
                       validation_split=0.1,
                       verbose=1, callbacks=callbacks)
 
-    plot_history(fname, config, 'rnn', history)
+    plot_history(fname, config, 'cnn', history)
 
     output_spectrogram = np.zeros((config['n_test'] + config['use_prev_frames'], spectrogram.shape[1]))
 
@@ -130,7 +128,8 @@ def main():
                                                                                           + config['use_prev_frames'], :]
 
     for i in range(config['n_test']):
-        cnn_input = output_spectrogram[i:i + config['use_prev_frames'], :].reshape([1, config['use_prev_frames'], -1])
+        cnn_input = output_spectrogram[i:i + config['use_prev_frames'], :].reshape([1, config['use_prev_frames'],
+                                                                                    config['n_mel'], 1])
         cnn_output = cnn.predict(cnn_input)
         cnn_output = cnn_output.clip(0., 1.)
         output_spectrogram[config['use_prev_frames'] + i, :] = cnn_output

@@ -24,8 +24,14 @@ def plot_history(fname, config, predictor_type, history):
     ax.plot(history.history['loss'], 'r-', label='train')
     ax.plot(history.history['val_loss'], 'b-', label='validation')
     ax.legend()
+
+    if predictor_type == 'cnn':
+        nhidden = 0
+    else:
+        nhidden = config['n_hidden']
+
     fig.savefig('data/output/{}/{}/{}/{}.png'.format(predictor_type,
-                                                     config['audio'], fname, config['n_hidden']), bbox_inches='tight')
+                                                     config['audio'], fname, nhidden), bbox_inches='tight')
 
 
 def convert_output_to_audio(output_spectrogram, config, scaler, melfilters, fname, predictor_type):
@@ -43,9 +49,14 @@ def convert_output_to_audio(output_spectrogram, config, scaler, melfilters, fnam
     output = reconstruct_signal_griffin_lim(output_spectrogram, config['framelength'],
                                             config['hop_length'], config['griflim_iter'], config['griflim_stat'])
 
+    if predictor_type == 'cnn':
+        nhidden = 0
+    else:
+        nhidden = config['n_hidden']
+
     lr.output.write_wav('data/output/{}/{}/{}/p{}_h{}_e{}.wav'.format(predictor_type, config['audio'], fname,
                                                                       config['use_prev_frames'],
-                                                                      config['n_hidden'], config['n_epochs']),
+                                                                      nhidden, config['n_epochs']),
                         output, config['sr'])
 
 

@@ -1,9 +1,6 @@
-import numpy as np
 from utils import *
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error
 import keras
-from matplotlib import pyplot as plt
 from datetime import datetime
 
 
@@ -17,18 +14,19 @@ config = {
     'hop_length':  256,
     'framelength': 1024,
     'audio': 'contrapunctus',
-    'n_train': 512,
+    'n_train': 20480,
     'n_test': 3000,
     'test_offset': 4100,
-    'use_prev_frames': 20480,
+    'use_prev_frames': 200,
     'start_offset': 0,
     'sr': 22050,
     'batch_size': 128,
-    'n_epochs': 2,
+    'n_epochs': 20,
     'n_mel': 160,
     'sigmoid_output': False,
     'tensorboard': False,
     'LR_on_plateau': True,
+    'freq_filters': True,
     'griflim_iter': 120,
     'griflim_stat': 20,
     'dim': 2
@@ -37,36 +35,44 @@ config = {
 
 def get_model(input_shape):
     cnn = keras.models.Sequential()
-    cnn.add(keras.layers.InputLayer(input_shape=(*input_shape, 1)))
-    cnn.add(keras.layers.Conv2D(32, (3, 3), dilation_rate=(2, 1), padding='same',
-                                activation='relu'))
-    cnn.add(keras.layers.Conv2D(32, (3, 3), dilation_rate=(2, 1), padding='same',
-                                activation='relu'))
-    cnn.add(keras.layers.MaxPooling2D(pool_size=(4, 1), strides=(4, 1)))
 
-    cnn.add(keras.layers.Conv2D(32, (3, 3), padding='same',
-                                activation='relu'))
-    cnn.add(keras.layers.Conv2D(32, (3, 3), padding='same',
-                                activation='relu'))
-    cnn.add(keras.layers.MaxPooling2D(pool_size=(4, 1), strides=(4, 1)))
+    if config['freq_filters']:
+        cnn.add(keras.layers.InputLayer(input_shape=(input_shape[0], input_shape[1])))
+        cnn.add(keras.layers.Conv1D(filters=512, kernel_size=3, dilation_rate=2))
+        cnn.add(keras.layers.Conv1D(filters=512, kernel_size=3, dilation_rate=2))
+        cnn.add(keras.layers.Conv1D(filters=config['n_mel'], kernel_size=2, dilation_rate=1))
+        cnn.add(keras.layers.GlobalMaxPooling1D())
+    else:
+        cnn.add(keras.layers.InputLayer(input_shape=(*input_shape, 1)))
+        cnn.add(keras.layers.Conv2D(32, (3, 3), dilation_rate=(2, 1), padding='same',
+                                    activation='relu'))
+        cnn.add(keras.layers.Conv2D(32, (3, 3), dilation_rate=(2, 1), padding='same',
+                                    activation='relu'))
+        cnn.add(keras.layers.MaxPooling2D(pool_size=(4, 1), strides=(4, 1)))
 
-    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
-                                activation='relu'))
-    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
-                                activation='relu'))
-    cnn.add(keras.layers.MaxPooling2D(pool_size=(3, 1), strides=(3, 1)))
+        cnn.add(keras.layers.Conv2D(32, (3, 3), padding='same',
+                                    activation='relu'))
+        cnn.add(keras.layers.Conv2D(32, (3, 3), padding='same',
+                                    activation='relu'))
+        cnn.add(keras.layers.MaxPooling2D(pool_size=(4, 1), strides=(4, 1)))
 
-    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
-                                activation='relu'))
-    cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
-                                activation='relu'))
-    cnn.add(keras.layers.MaxPooling2D(pool_size=(3, 1), strides=(3, 1)))
+        cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
+                                    activation='relu'))
+        cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
+                                    activation='relu'))
+        cnn.add(keras.layers.MaxPooling2D(pool_size=(3, 1), strides=(3, 1)))
 
-    cnn.add(keras.layers.Conv2D(1, (1, 1), padding='same',
-                                activation='relu'))
-    cnn.add(keras.layers.Flatten())
+        cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
+                                    activation='relu'))
+        cnn.add(keras.layers.Conv2D(64, (3, 3), padding='same',
+                                    activation='relu'))
+        cnn.add(keras.layers.MaxPooling2D(pool_size=(3, 1), strides=(3, 1)))
 
-    opt = keras.optimizers.Adam(lr=0.0015, beta_1=0.9, beta_2=0.999)
+        cnn.add(keras.layers.Conv2D(1, (1, 1), padding='same',
+                                    activation='relu'))
+        cnn.add(keras.layers.Flatten())
+
+    opt = keras.optimizers.Adam(lr=0.00125, beta_1=0.9, beta_2=0.999)
     cnn.compile(loss='mse', optimizer=opt)
     cnn.summary()
     return cnn
@@ -83,7 +89,7 @@ def get_callbacks(fname):
         callbacks.append(tbc)
 
     if config['LR_on_plateau']:
-        rlrp = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=1, mode='auto',
+        rlrp = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, verbose=1, mode='auto',
                                                  min_delta=0.0001, cooldown=1, min_lr=1e-6)
         callbacks.append(rlrp)
     return callbacks
@@ -104,10 +110,10 @@ def main():
     spectrogram = mm_scaler.fit_transform(spectrogram)
     print('Min/max spectrogram post-scaling: {}, {}'.format(np.min(spectrogram), np.max(spectrogram)))
 
-    X_train = np.zeros((config['n_train'], config['use_prev_frames'], spectrogram.shape[1], 1))
+    X_train = np.zeros((config['n_train'], config['use_prev_frames'], spectrogram.shape[1]))
 
     for i in range(config['use_prev_frames']):
-        X_train[:, i, :, 0] = spectrogram[i:i + config['n_train'], :]
+        X_train[:, i, :] = spectrogram[i:i + config['n_train'], :]
 
     y_train = spectrogram[config['use_prev_frames']:config['n_train']+config['use_prev_frames'], :]
 
@@ -129,7 +135,7 @@ def main():
 
     for i in range(config['n_test']):
         cnn_input = output_spectrogram[i:i + config['use_prev_frames'], :].reshape([1, config['use_prev_frames'],
-                                                                                    config['n_mel'], 1])
+                                                                                    config['n_mel']])
         cnn_output = cnn.predict(cnn_input)
         cnn_output = cnn_output.clip(0., 1.)
         output_spectrogram[config['use_prev_frames'] + i, :] = cnn_output

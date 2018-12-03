@@ -175,3 +175,26 @@ def reconstruct_signal_griffin_lim(magnitude_spectrogram, fft_size, hopsamp, ite
             diff = sqrt(sum((x_reconstruct - prev_x)**2) / x_reconstruct.size)
             print('Reconstruction iteration: {}/{} RMSE: {} '.format(n, iterations, diff))
     return x_reconstruct
+
+
+def reconstruct_signal_griffin_lim_lr(magnitude_spectrogram, fft_size, hopsamp, iterations, griflim_stat):
+
+    time_slices = magnitude_spectrogram.shape[0]
+    len_samples = int(time_slices*hopsamp + fft_size)
+    x_reconstruct = np.random.randn(len_samples)
+    for n in range(iterations):
+        reconstruction_spectrogram = lr.stft(x_reconstruct, n_fft=fft_size, hop_length=hopsamp)
+        if n == 0:
+            prev_x_spec = reconstruction_spectrogram
+
+        reconstruction_angle = np.angle(reconstruction_spectrogram + 0.99 * (reconstruction_spectrogram - prev_x_spec))
+
+        proposal_spectrogram = magnitude_spectrogram * np.exp(1.0j * reconstruction_angle)
+        prev_x = x_reconstruct
+        x_reconstruct = lr.istft(proposal_spectrogram, hop_length=hopsamp, win_length=fft_size)
+        prev_x_spec = reconstruction_spectrogram
+
+        if n % griflim_stat == 0:
+            diff = sqrt(sum((x_reconstruct - prev_x)**2) / x_reconstruct.size)
+            print('Reconstruction iteration: {}/{} RMSE: {} '.format(n, iterations, diff))
+    return x_reconstruct

@@ -4,6 +4,7 @@ from math import sqrt
 import pathlib
 import json
 from matplotlib import pyplot as plt
+from tqdm import tqdm
 
 
 def create_dirs_write_config(fname, config, predictor_type):
@@ -103,98 +104,31 @@ def invert_mel_db(spec, mel_filters, config=None):
     return mel_filters.T.dot(lr.db_to_power(spec, ref=ref)) ** 0.5
 
 
-def stft_for_reconstruction(x, fft_size, hopsamp):
-    """Compute and return the STFT of the supplied time domain signal x.
-    Args:
-        x (1-dim Numpy array): A time domain signal.
-        fft_size (int): FFT size. Should be a power of 2, otherwise DFT will be used.
-        hopsamp (int):
-    Returns:
-        The STFT. The rows are the time slices and columns are the frequency bins.
+def griffinlim(magnitude_spectrogram, fft_size, hopsamp, iterations=100, verbose=False, fast=True):
     """
-    window = np.hanning(fft_size)
-    fft_size = int(fft_size)
-    hopsamp = int(hopsamp)
-    return np.array([np.fft.rfft(window*x[i:i+fft_size])
-                     for i in range(0, len(x)-fft_size, hopsamp)])
-
-
-def istft_for_reconstruction(X, fft_size, hopsamp):
-    """Invert a STFT into a time domain signal.
-    Args:
-        X (2-dim Numpy array): Input spectrogram. The rows are the time slices and columns are the frequency bins.
-        fft_size (int):
-        hopsamp (int): The hop size, in samples.
-    Returns:
-        The inverse STFT.
+    As taken from https://github.com/librosa/librosa/issues/434#issuecomment-291266229
     """
-    fft_size = int(fft_size)
-    hopsamp = int(hopsamp)
-    window = np.hanning(fft_size)
-    time_slices = X.shape[0]
-    len_samples = int(time_slices*hopsamp + fft_size)
-    x = np.zeros(len_samples)
-    for n, i in enumerate(range(0, len(x)-fft_size, hopsamp)):
-        x[i:i+fft_size] += window*np.real(np.fft.irfft(X[n]))
-    return x
+    angles = np.exp(2j * np.pi * np.random.rand(*magnitude_spectrogram.shape))
 
+    prev_rebuilt = np.zeros(magnitude_spectrogram.shape)
 
-def reconstruct_signal_griffin_lim(magnitude_spectrogram, fft_size, hopsamp, iterations, griflim_stat):
-    """Reconstruct an audio signal from a magnitude spectrogram.
-    Given a magnitude spectrogram as input, reconstruct
-    the audio signal and return it using the Griffin-Lim algorithm from the paper:
-    "Signal estimation from modified short-time fourier transform" by Griffin and Lim,
-    in IEEE transactions on Acoustics, Speech, and Signal Processing. Vol ASSP-32, No. 2, April 1984.
-    Args:
-        magnitude_spectrogram (2-dim Numpy array): The magnitude spectrogram. The rows correspond to the time slices
-            and the columns correspond to frequency bins.
-        fft_size (int): The FFT size, which should be a power of 2.
-        hopsamp (int): The hope size in samples.
-        iterations (int): Number of iterations for the Griffin-Lim algorithm. Typically a few hundred
-            is sufficient.
-    Returns:
-        The reconstructed time domain signal as a 1-dim Numpy array.
-    """
-    time_slices = magnitude_spectrogram.shape[0]
-    len_samples = int(time_slices*hopsamp + fft_size)
-    x_reconstruct = np.random.randn(len_samples)
-    n = iterations  # number of iterations of Griffin-Lim algorithm.
-    for n in range(iterations):
-        reconstruction_spectrogram = stft_for_reconstruction(x_reconstruct, fft_size, hopsamp)
-        if n == 0:
-            prev_x_spec = reconstruction_spectrogram
+    t = tqdm(range(iterations), ncols=100, mininterval=2.0, disable=not verbose)
+    for i, tt in enumerate(t):
+        full = np.abs(magnitude_spectrogram).astype(np.complex) * angles
+        inverse = lr.istft(full, hop_length=hopsamp)
+        rebuilt = lr.stft(inverse, n_fft=fft_size, hop_length=hopsamp)
 
-        reconstruction_angle = np.angle(reconstruction_spectrogram + 0.99 * (reconstruction_spectrogram - prev_x_spec))
-        # reconstruction_angle = np.angle(reconstruction_spectrogram)
-        proposal_spectrogram = magnitude_spectrogram * np.exp(1.0j * reconstruction_angle)
-        prev_x = x_reconstruct
-        x_reconstruct = istft_for_reconstruction(proposal_spectrogram, fft_size, hopsamp)
-        prev_x_spec = reconstruction_spectrogram
+        if fast:
+            angles = np.exp(1j * np.angle(rebuilt + 0.99 * (rebuilt - prev_rebuilt)))
+            prev_rebuilt = rebuilt
+        else:
+            angles = np.exp(1j * np.angle(rebuilt))
 
-        if n % griflim_stat == 0:
-            diff = sqrt(sum((x_reconstruct - prev_x)**2) / x_reconstruct.size)
-            print('Reconstruction iteration: {}/{} RMSE: {} '.format(n, iterations, diff))
-    return x_reconstruct
+        if verbose:
+            diff = np.abs(magnitude_spectrogram) - np.abs(rebuilt)
+            t.set_postfix(loss=np.linalg.norm(diff, 'fro'))
 
+    full = np.abs(magnitude_spectrogram).astype(np.complex) * angles
+    inverse = lr.istft(full, hop_length=hopsamp)
 
-def reconstruct_signal_griffin_lim_lr(magnitude_spectrogram, fft_size, hopsamp, iterations, griflim_stat):
-
-    time_slices = magnitude_spectrogram.shape[0]
-    len_samples = int(time_slices*hopsamp + fft_size)
-    x_reconstruct = np.random.randn(len_samples)
-    for n in range(iterations):
-        reconstruction_spectrogram = lr.stft(x_reconstruct, n_fft=fft_size, hop_length=hopsamp)
-        if n == 0:
-            prev_x_spec = reconstruction_spectrogram
-
-        reconstruction_angle = np.angle(reconstruction_spectrogram + 0.99 * (reconstruction_spectrogram - prev_x_spec))
-
-        proposal_spectrogram = magnitude_spectrogram * np.exp(1.0j * reconstruction_angle)
-        prev_x = x_reconstruct
-        x_reconstruct = lr.istft(proposal_spectrogram, hop_length=hopsamp, win_length=fft_size)
-        prev_x_spec = reconstruction_spectrogram
-
-        if n % griflim_stat == 0:
-            diff = sqrt(sum((x_reconstruct - prev_x)**2) / x_reconstruct.size)
-            print('Reconstruction iteration: {}/{} RMSE: {} '.format(n, iterations, diff))
-    return x_reconstruct
+    return inverse

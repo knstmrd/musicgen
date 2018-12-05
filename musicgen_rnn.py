@@ -1,9 +1,8 @@
+from utils import get_callbacks, create_dirs_write_config, load_mel_spectrogram_db, write_keras_model
+from utils import plot_history, convert_output_to_audio
 import numpy as np
-from utils import *
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error
 import keras
-from matplotlib import pyplot as plt
 from datetime import datetime
 
 
@@ -20,19 +19,23 @@ config = {
     'n_train': 20480,
     'n_test': 3000,
     'test_offset': 4100,
-    'use_prev_frames': 25,
+    'use_prev_frames': 95,
     'start_offset': 0,
     'sr': 22050,
-    'batch_size': 64,
-    'n_hidden': 120,
+    'batch_size': 128,
+    'n_hidden': 200,
     'n_layers': 4,
-    'n_epochs': 120,
+    'n_epochs': 150,
     'n_mel': 160,
+    'rnn_type': 'gru',
     'sigmoid_output': False,
     'tensorboard': False,
+    'save_full_model': True,
     'LR_on_plateau': True,
+    'earlystopping': True,
     'griflim_iter': 120,
-    'griflim_stat': 20,
+    'griflim_verbose': True,
+    'griflim_fast': True,
 }
 
 
@@ -42,15 +45,29 @@ def get_model(input_shape, batch_input_shape=None):
     if batch_input_shape is not None:
         rnn.add(keras.layers.InputLayer(batch_input_shape=batch_input_shape))
         for i in range(config['n_layers']-1):
+            if config['rnn_type'] == 'lstm':
+                rnn.add(keras.layers.LSTM(units=config['n_hidden'],
+                                          batch_input_shape=batch_input_shape,
+                                          stateful=True, return_sequences=True))
+            elif config['rnn_type'] == 'gru':
+                rnn.add(keras.layers.GRU(units=config['n_hidden'],
+                                         batch_input_shape=batch_input_shape,
+                                         stateful=True, return_sequences=True))
+
+        if config['rnn_type'] == 'lstm':
             rnn.add(keras.layers.LSTM(units=config['n_hidden'],
                                       batch_input_shape=batch_input_shape,
-                                      stateful=True, return_sequences=True))
-        rnn.add(keras.layers.LSTM(units=config['n_hidden'],
-                                  batch_input_shape=batch_input_shape,
-                                  stateful=True))
+                                      stateful=True))
+        elif config['rnn_type'] == 'gru':
+            rnn.add(keras.layers.GRU(units=config['n_hidden'],
+                                     batch_input_shape=batch_input_shape,
+                                     stateful=True))
     else:
         rnn.add(keras.layers.InputLayer(input_shape=input_shape))
-        rnn.add(keras.layers.LSTM(units=config['n_hidden']))
+        if config['rnn_type'] == 'lstm':
+            rnn.add(keras.layers.LSTM(units=config['n_hidden']))
+        elif config['rnn_type'] == 'gru':
+            rnn.add(keras.layers.GRU(units=config['n_hidden']))
 
     rnn.add(keras.layers.Dense(config['n_mel']))
 
@@ -58,27 +75,10 @@ def get_model(input_shape, batch_input_shape=None):
         rnn.add(keras.layers.Activation('sigmoid'))
 
     # opt = keras.optimizers.Adam(lr=0.002, beta_1=0.9, beta_2=0.999)
-    opt = keras.optimizers.RMSprop(lr=0.002)
+    opt = keras.optimizers.RMSprop(lr=0.0015)
     rnn.compile(loss='mse', optimizer=opt)
     rnn.summary()
     return rnn
-
-
-def get_callbacks(fname):
-    callbacks = []
-
-    if config['tensorboard']:
-        tbc = keras.callbacks.TensorBoard(log_dir='./data/output/rnn/{}/{}/tb_graphs'.format(config['audio'], fname),
-                                          histogram_freq=10,
-                                          write_graph=False, write_grads=True,
-                                          batch_size=config['batch_size'])
-        callbacks.append(tbc)
-
-    if config['LR_on_plateau']:
-        rlrp = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=1, mode='auto',
-                                                 min_delta=0.0001, cooldown=1, min_lr=1e-6)
-        callbacks.append(rlrp)
-    return callbacks
 
 
 def main():
@@ -108,7 +108,7 @@ def main():
 
     write_keras_model(fname, config, 'rnn', rnn)
 
-    callbacks = get_callbacks(fname)
+    callbacks = get_callbacks(fname, config)
     history = rnn.fit(X_train, y_train, epochs=config['n_epochs'], batch_size=config['batch_size'],
                       validation_split=0.1,
                       verbose=1, shuffle=False, callbacks=callbacks)

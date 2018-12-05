@@ -1,4 +1,6 @@
-from utils import *
+from utils import get_callbacks, create_dirs_write_config, load_mel_spectrogram_db, write_keras_model
+from utils import plot_history, convert_output_to_audio
+import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import keras
 from datetime import datetime
@@ -17,19 +19,19 @@ config = {
     'n_train': 20480,
     'n_test': 3000,
     'test_offset': 4100,
-    'use_prev_frames': 200,
+    'use_prev_frames': 128,
     'start_offset': 0,
     'sr': 22050,
     'batch_size': 128,
-    'n_epochs': 20,
+    'n_epochs': 10,
     'n_mel': 160,
     'sigmoid_output': False,
     'tensorboard': False,
     'LR_on_plateau': True,
     'freq_filters': True,
     'griflim_iter': 120,
-    'griflim_stat': 20,
-    'dim': 2
+    'griflim_verbose': False,
+    'griflim_fast': True
 }
 
 
@@ -38,9 +40,10 @@ def get_model(input_shape):
 
     if config['freq_filters']:
         cnn.add(keras.layers.InputLayer(input_shape=(input_shape[0], input_shape[1])))
-        cnn.add(keras.layers.Conv1D(filters=512, kernel_size=3, dilation_rate=2))
-        cnn.add(keras.layers.Conv1D(filters=512, kernel_size=3, dilation_rate=2))
-        cnn.add(keras.layers.Conv1D(filters=config['n_mel'], kernel_size=2, dilation_rate=1))
+        cnn.add(keras.layers.Conv1D(filters=512, kernel_size=10, dilation_rate=4, activation='elu', padding='valid'))
+        cnn.add(keras.layers.Conv1D(filters=512, kernel_size=10, dilation_rate=2, activation='elu', padding='valid'))
+        cnn.add(keras.layers.Conv1D(filters=config['n_mel'], kernel_size=10, dilation_rate=2, activation='elu',
+                                    padding='valid'))
         cnn.add(keras.layers.GlobalMaxPooling1D())
     else:
         cnn.add(keras.layers.InputLayer(input_shape=(*input_shape, 1)))
@@ -78,23 +81,6 @@ def get_model(input_shape):
     return cnn
 
 
-def get_callbacks(fname):
-    callbacks = []
-
-    if config['tensorboard']:
-        tbc = keras.callbacks.TensorBoard(log_dir='./data/output/rnn/{}/{}/tb_graphs'.format(config['audio'], fname),
-                                          histogram_freq=10,
-                                          write_graph=False, write_grads=True,
-                                          batch_size=config['batch_size'])
-        callbacks.append(tbc)
-
-    if config['LR_on_plateau']:
-        rlrp = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, verbose=1, mode='auto',
-                                                 min_delta=0.0001, cooldown=1, min_lr=1e-6)
-        callbacks.append(rlrp)
-    return callbacks
-
-
 def main():
     fname = str(datetime.now()).replace(':', '_').replace(' ', '_')[5:19]
     create_dirs_write_config(fname, config, 'cnn')
@@ -121,7 +107,7 @@ def main():
 
     write_keras_model(fname, config, 'cnn', cnn)
 
-    callbacks = get_callbacks(fname)
+    callbacks = get_callbacks(fname, config)
     history = cnn.fit(X_train, y_train, epochs=config['n_epochs'], batch_size=config['batch_size'],
                       validation_split=0.1,
                       verbose=1, callbacks=callbacks)

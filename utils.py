@@ -1,10 +1,31 @@
 import numpy as np
 import librosa as lr
-from math import sqrt
 import pathlib
 import json
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+import os
+import keras
+
+
+def get_callbacks(fname, config):
+    callbacks = []
+
+    if config['tensorboard']:
+        tbc = keras.callbacks.TensorBoard(log_dir='./data/output/rnn/{}/{}/tb_graphs'.format(config['audio'], fname),
+                                          histogram_freq=10,
+                                          write_graph=False, write_grads=True,
+                                          batch_size=config['batch_size'])
+        callbacks.append(tbc)
+    if config['earlystopping']:
+        es = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.0001, patience=5,
+                                           verbose=0, mode='auto')
+        callbacks.append(es)
+    if config['LR_on_plateau']:
+        rlrp = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.75, patience=4, verbose=1, mode='auto',
+                                                 min_delta=0.0002, cooldown=1, min_lr=1e-6)
+        callbacks.append(rlrp)
+    return callbacks
 
 
 def create_dirs_write_config(fname, config, predictor_type):
@@ -17,6 +38,8 @@ def create_dirs_write_config(fname, config, predictor_type):
 def write_keras_model(fname, config, predictor_type, model):
     with open('data/output/{}/{}/{}/keras_config.json'.format(predictor_type, config['audio'], fname), 'w') as f:
         json.dump(model.get_config(), f)
+    if config['save_full_model']:
+        model.save('data/output/{}/{}/{}/model.h5'.format(predictor_type, config['audio'], fname))
 
 
 def plot_history(fname, config, predictor_type, history):
@@ -47,8 +70,9 @@ def convert_output_to_audio(output_spectrogram, config, scaler, melfilters, fnam
     output_spectrogram = invert_mel_db(output_spectrogram.T, melfilters, config).T
     print('Max output amplitude: {}'.format(np.max(output_spectrogram)))
 
-    output = reconstruct_signal_griffin_lim(output_spectrogram, config['framelength'],
-                                            config['hop_length'], config['griflim_iter'], config['griflim_stat'])
+    output = griffinlim(output_spectrogram, config['framelength'],
+                        config['hop_length'], config['griflim_iter'], config['griflim_verbose'],
+                        config['griflim_fast'])
 
     if predictor_type == 'cnn':
         nhidden = 0
@@ -75,12 +99,19 @@ def load_spectrogram_db(path, config):
 
 
 def load_mel_spectrogram(path, config):
-    y, sr = load_audio(path, config['sr'])
-    spec = stft(y, config)
+    npz_path = 'input/spectrograms/' + config['audio'] + '.npz'
+    if os.path.isfile(npz_path):
+        spec = np.load(npz_path)
+        sr = config['sr']
+    else:
+        y, sr = load_audio(path, config['sr'])
+        spec = stft(y, config)
+        spec = np.abs(spec)
+        np.save(npz_path, spec)
 
     mel_filters = lr.filters.mel(sr, n_fft=config['framelength'],
                                  n_mels=config['n_mel'], fmin=0.0, fmax=None, htk=False, norm=1)
-    spec = np.abs(spec)
+
     print('Max amplitude: {}'.format(np.max(spec)))
     spec = mel_filters.dot(spec ** 2)
     return spec, mel_filters
@@ -109,12 +140,12 @@ def griffinlim(magnitude_spectrogram, fft_size, hopsamp, iterations=100, verbose
     As taken from https://github.com/librosa/librosa/issues/434#issuecomment-291266229
     """
     angles = np.exp(2j * np.pi * np.random.rand(*magnitude_spectrogram.shape))
-
+    abs_complex = np.abs(magnitude_spectrogram).astype(np.complex)
     prev_rebuilt = np.zeros(magnitude_spectrogram.shape)
 
     t = tqdm(range(iterations), ncols=100, mininterval=2.0, disable=not verbose)
     for i, tt in enumerate(t):
-        full = np.abs(magnitude_spectrogram).astype(np.complex) * angles
+        full = abs_complex * angles
         inverse = lr.istft(full, hop_length=hopsamp)
         rebuilt = lr.stft(inverse, n_fft=fft_size, hop_length=hopsamp)
 

@@ -27,11 +27,12 @@ config = {
     'n_mel': 160,
     'sigmoid_output': False,
     'tensorboard': False,
+    'save_full_model': False,
     'LR_on_plateau': True,
-    'freq_filters': True,
+    'earlystopping': True,
     'griflim_iter': 120,
-    'griflim_verbose': False,
-    'griflim_fast': True
+    'griflim_verbose': True,
+    'griflim_fast': True,
 }
 
 
@@ -105,12 +106,12 @@ def main():
 
     cnn = get_model((X_train.shape[1], X_train.shape[2]))
 
-    write_keras_model(fname, config, 'cnn', cnn)
-
     callbacks = get_callbacks(fname, config)
     history = cnn.fit(X_train, y_train, epochs=config['n_epochs'], batch_size=config['batch_size'],
                       validation_split=0.1,
                       verbose=1, callbacks=callbacks)
+
+    write_keras_model(fname, config, 'cnn', cnn)
 
     plot_history(fname, config, 'cnn', history)
 
@@ -118,6 +119,8 @@ def main():
 
     output_spectrogram[:config['use_prev_frames'], :] = spectrogram[config['test_offset']:config['test_offset']
                                                                                           + config['use_prev_frames'], :]
+
+    print('Running prediction')
 
     for i in range(config['n_test']):
         cnn_input = output_spectrogram[i:i + config['use_prev_frames'], :].reshape([1, config['use_prev_frames'],

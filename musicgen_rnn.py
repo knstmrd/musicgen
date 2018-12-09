@@ -25,9 +25,11 @@ config = {
     'batch_size': 128,
     'n_hidden': 200,
     'n_layers': 4,
-    'n_epochs': 150,
+    'n_epochs': 80,
     'n_mel': 160,
-    'rnn_type': 'gru',
+    'rnn_type': 'lstm',
+    'dropout': 0.125,
+    'recurrent_drouput': 0.125,
     'sigmoid_output': False,
     'tensorboard': False,
     'save_full_model': True,
@@ -48,20 +50,28 @@ def get_model(input_shape, batch_input_shape=None):
             if config['rnn_type'] == 'lstm':
                 rnn.add(keras.layers.LSTM(units=config['n_hidden'],
                                           batch_input_shape=batch_input_shape,
-                                          stateful=True, return_sequences=True))
+                                          stateful=True, return_sequences=True,
+                                          dropout=config['dropout'],
+                                          recurrent_dropout=config['recurrent_drouput']))
             elif config['rnn_type'] == 'gru':
                 rnn.add(keras.layers.GRU(units=config['n_hidden'],
                                          batch_input_shape=batch_input_shape,
-                                         stateful=True, return_sequences=True))
+                                         stateful=True, return_sequences=True,
+                                         dropout=config['dropout'],
+                                         recurrent_dropout=config['recurrent_drouput']))
 
         if config['rnn_type'] == 'lstm':
             rnn.add(keras.layers.LSTM(units=config['n_hidden'],
                                       batch_input_shape=batch_input_shape,
-                                      stateful=True))
+                                      stateful=True,
+                                      dropout=config['dropout'],
+                                      recurrent_dropout=config['recurrent_drouput']))
         elif config['rnn_type'] == 'gru':
             rnn.add(keras.layers.GRU(units=config['n_hidden'],
                                      batch_input_shape=batch_input_shape,
-                                     stateful=True))
+                                     stateful=True,
+                                     dropout=config['dropout'],
+                                     recurrent_dropout=config['recurrent_drouput']))
     else:
         rnn.add(keras.layers.InputLayer(input_shape=input_shape))
         if config['rnn_type'] == 'lstm':
@@ -106,14 +116,14 @@ def main():
     rnn = get_model((X_train.shape[1], X_train.shape[2]),
                     batch_input_shape=(config['batch_size'], X_train.shape[1], X_train.shape[2]))
 
-    write_keras_model(fname, config, 'rnn', rnn)
-
     callbacks = get_callbacks(fname, config)
     history = rnn.fit(X_train, y_train, epochs=config['n_epochs'], batch_size=config['batch_size'],
                       validation_split=0.1,
                       verbose=1, shuffle=False, callbacks=callbacks)
 
-    plot_history(fname, config, 'rnn', history)
+    write_keras_model(fname, config, 'rnn', rnn)
+
+    # plot_history(fname, config, 'rnn', history)
 
     output_spectrogram = np.zeros((config['n_test'] + config['use_prev_frames'], spectrogram.shape[1]))
 
@@ -124,6 +134,8 @@ def main():
                      batch_input_shape=(1, X_train.shape[1], X_train.shape[2]))
 
     rnn2.set_weights(rnn.get_weights())
+
+    print('Running prediction')
 
     for i in range(config['n_test']):
         rnn_input = output_spectrogram[i:i + config['use_prev_frames'], :].reshape([1, config['use_prev_frames'], -1])

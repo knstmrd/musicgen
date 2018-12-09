@@ -67,7 +67,7 @@ def convert_output_to_audio(output_spectrogram, config, scaler, melfilters, fnam
     output_spectrogram = scaler.inverse_transform(output_spectrogram)
     print('Output spectrogram power range: {} {}'.format(np.min(output_spectrogram), np.max(output_spectrogram)))
 
-    output_spectrogram = invert_mel_db(output_spectrogram.T, melfilters, config).T
+    output_spectrogram = invert_mel_db(output_spectrogram.T, melfilters, config)
     print('Max output amplitude: {}'.format(np.max(output_spectrogram)))
 
     output = griffinlim(output_spectrogram, config['framelength'],
@@ -99,7 +99,7 @@ def load_spectrogram_db(path, config):
 
 
 def load_mel_spectrogram(path, config):
-    npz_path = 'input/spectrograms/' + config['audio'] + '.npz'
+    npz_path = 'input/spectrograms/' + config['audio'] + '.npy'
     if os.path.isfile(npz_path):
         spec = np.load(npz_path)
         sr = config['sr']
